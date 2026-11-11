@@ -41,6 +41,7 @@ class Http:
         self._last = 0.0
         self.count = 0
         self.hosts_ok = set()      # 已知需要宽松 TLS 的主机
+        self.blocked = {}          # 已确认被 IP 限流的主机
         self._opener_cache = {}
 
     # ---------- 内部 ----------
@@ -119,6 +120,11 @@ class Http:
                     continue
                 code = getattr(e, "code", None)
                 if code == 403:
+                    # 冷却一次仍 403，说明是 IP 级限流，再等也没用，直接放弃，
+                    # 免得每个关键词都白等 35 秒把整轮采集拖成几十分钟
+                    if self.blocked.get(host):
+                        raise RuntimeError(f"403 限流（{host}），本轮跳过") from e
+                    self.blocked[host] = True
                     if attempt <= 2:
                         print(f"    ! 403 限流，冷却 35s 后重试 ({attempt}/2)")
                         time.sleep(35)
