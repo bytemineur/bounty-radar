@@ -21,26 +21,45 @@ SOURCE = "rmfygg"
 
 
 def _ao_data(start, length):
-    return [
+    """DataTables 的 aoData 必须完整。
+
+    服务端按 mDataProp_i 逐列取字段，只给 mDataProp_0 时查询会静默返回
+    iTotalRecords=0（不是报错），表现为"接口没数据"。
+    """
+    ao = [
         {"name": "sEcho", "value": 1},
         {"name": "iColumns", "value": 6},
         {"name": "sColumns", "value": ",,,,,"},
         {"name": "iDisplayStart", "value": start},
         {"name": "iDisplayLength", "value": length},
-        {"name": "mDataProp_0", "value": 0},
     ]
+    for i in range(6):
+        ao.append({"name": "mDataProp_%d" % i, "value": i})
+    for i in range(6):
+        ao.append({"name": "mDataSort_%d" % i, "value": i})
+    for i in range(6):
+        ao.append({"name": "bSortable_%d" % i, "value": "true"})
+    for i in range(6):
+        ao.append({"name": "bSearchable_%d" % i, "value": "true"})
+    ao.extend([
+        {"name": "sSearch", "value": ""},
+        {"name": "bRegex", "value": "false"},
+        {"name": "iSortingCols", "value": 0},
+    ])
+    return ao
 
 
-def fetch_page(http, keyword, start=0, length=None, notice_type=""):
+def fetch_page(http, keyword, start=0, length=None, notice_type="",
+               notice_type_val="", court_name=""):
     length = length or config.PAGE_SIZE
     data = {
         P + "content": keyword,
         P + "searchContent": "",
-        P + "courtParam": "",
+        P + "courtParam": court_name,
         P + "IEVersion": "",
         P + "flag": "init",
-        P + "noticeType": notice_type,
-        P + "noticeTypeVal": "",
+        P + "noticeType": notice_type,          # 类型代码，如 66
+        P + "noticeTypeVal": notice_type_val,   # 类型中文名，如 开庭传票
         P + "noticeSource": "",
         P + "sourceTypeVal": "全部",
         P + "isWebCountNotice": "",
@@ -54,7 +73,8 @@ def fetch_page(http, keyword, start=0, length=None, notice_type=""):
     return json.loads(raw)
 
 
-def iter_keyword(http, keyword, max_pages=200, notice_type=None):
+def iter_keyword(http, keyword, max_pages=200, notice_type=None,
+                 notice_type_val=""):
     """逐页产出公告 dict（原始字段）。"""
     notice_type = config.NOTICE_TYPE_CODE if notice_type is None else notice_type
     total = None
@@ -62,7 +82,8 @@ def iter_keyword(http, keyword, max_pages=200, notice_type=None):
     pages = 0
     while pages < max_pages:
         try:
-            j = fetch_page(http, keyword, start=start, notice_type=notice_type)
+            j = fetch_page(http, keyword, start=start, notice_type=notice_type,
+                           notice_type_val=notice_type_val)
         except Exception as e:
             print(f"    ! 关键词[{keyword}] offset={start} 失败: {e}")
             break

@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
-"""执行悬赏公告数据库 - 命令行入口
+"""法院公告雷达 - 命令行入口
 
-用法:
-  python cli.py init                初始化数据库
-  python cli.py crawl               全量采集
+两块看板共用一套采集/解析/导出管线：
+
+  悬赏看板（index.html）
+    python cli.py init / crawl / reparse / dedupe / export / stats / serve / update
+
+  开庭看板（hearings.html）
+    python cli.py hearing crawl     采集开庭公告
+    python cli.py hearing update    采集 + 解析 + 导出
+    python cli.py hearing export    只导出
+    python cli.py hearing reparse   用最新规则重解
+    python cli.py hearing stats     统计
+    python cli.py hearing serve     打开开庭看板
+
+示例:
   python cli.py crawl --limit 50    试跑，最多入库 50 条
   python cli.py crawl --kw 悬赏     指定关键词
-  python cli.py update              采集 + 重新解析 + 导出（增量更新一条命令）
-  python cli.py reparse             用最新规则重新解析已有数据
-  python cli.py dedupe              清理正文重复的记录
-  python cli.py export              导出看板数据
-  python cli.py serve               本地起服务并打开看板
-  python cli.py stats               查看入库统计
 """
 import argparse
 import http.server
@@ -102,6 +107,7 @@ def cmd_stats(_):
 def cmd_serve(args):
     host = args.host
     port = args.port
+    page = getattr(args, "page", None) or "index.html"
     os.chdir(config.WEB_DIR)
 
     class Handler(http.server.SimpleHTTPRequestHandler):
@@ -112,9 +118,11 @@ def cmd_serve(args):
     with socketserver.ThreadingTCPServer((host, port), Handler) as httpd:
         httpd.daemon_threads = True
         shown = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
-        url = f"http://{shown}:{port}/index.html"
+        url = f"http://{shown}:{port}/{page}"
         print(f"监听 {host}:{port}")
-        print(f"看板地址: {url}\nCtrl+C 停止")
+        print(f"看板地址: {url}")
+        print(f"悬赏看板: http://{shown}:{port}/index.html")
+        print(f"开庭看板: http://{shown}:{port}/hearings.html\nCtrl+C 停止")
         if not args.no_browser:
             try:
                 webbrowser.open(url)
@@ -132,6 +140,81 @@ def cmd_update(args):
                    sources=_sources(args.source))
     pipeline.reparse_all()
     exporter.export()
+
+
+# ---------------- 开庭看板 ----------------
+def _h_sources(arg):
+    if not arg or arg == "all":
+        return None
+    return [s.strip() for s in arg.split(",") if s.strip()]
+
+
+def cmd_h_crawl(args):
+    pipeline.crawl_hearings(keywords=[args.kw] if args.kw else None,
+                            max_pages=args.pages, limit=args.limit,
+                            sources=_h_sources(args.source))
+
+
+def cmd_h_update(args):
+    pipeline.crawl_hearings(keywords=[args.kw] if args.kw else None,
+                            max_pages=args.pages, limit=args.limit,
+                            sources=_h_sources(args.source))
+    conn = db.connect()
+    db.dedupe_hearings(conn)
+    conn.close()
+    exporter.export_hearings()
+
+
+def cmd_h_export(_):
+    exporter.export_hearings()
+
+
+def cmd_h_reparse(_):
+    pipeline.reparse_hearings()
+    exporter.export_hearings()
+
+
+def cmd_h_stats(_):
+    conn = db.connect()
+    db.init_db(conn)
+    s = db.hearing_stats(conn)
+    print(f"开庭记录    : {s['n']}")
+    print(f"有开庭日期  : {s['has_date']}")
+    print(f"有案由      : {s['has_cause']}")
+    print(f"有涉案金额  : {s['has_amount']}")
+    print(f"企业被告    : {s['has_company']}")
+    print(f"商事案由    : {s['commercial']}")
+
+    print("\n-- 按数据源 --")
+    for r in conn.execute("""SELECT source, COUNT(*) n FROM hearings
+                             GROUP BY source ORDER BY n DESC"""):
+        print(f"  {r['source']:<16} {r['n']}")
+
+    print("\n-- 被告类型 --")
+    for r in conn.execute("""SELECT COALESCE(defendant_type,'unknown') t,
+                                    COUNT(*) n
+                             FROM hearings GROUP BY t ORDER BY n DESC"""):
+        print(f"  {r['t']:<10} {r['n']}")
+
+    print("\n-- 案由分组 --")
+    for r in conn.execute("""SELECT COALESCE(cause_group,'未归类') g, COUNT(*) n
+                             FROM hearings GROUP BY g ORDER BY n DESC"""):
+        print(f"  {r['g']:<10} {r['n']}")
+
+    print("\n-- 未来 30 天内开庭（前 10 场）--")
+    for r in conn.execute("""SELECT hearing_at, court, cause, defendant
+                             FROM hearings
+                             WHERE hearing_date >= date('now')
+                               AND hearing_date <= date('now','+30 day')
+                             ORDER BY hearing_at LIMIT 10"""):
+        print(f"  {r['hearing_at']}  {(r['court'] or '')[:16]:<16} "
+              f"{(r['cause'] or '')[:12]:<12} {(r['defendant'] or '')[:20]}")
+    conn.close()
+
+
+def cmd_h_serve(args):
+    args.page = "hearings.html"
+    cmd_serve(args)
 
 
 def main():
@@ -163,6 +246,34 @@ def main():
     p.add_argument("--limit", type=int, help="最多入库条数")
     p.add_argument("--source", help="all(默认) / rmfygg / court，可逗号组合")
     p.set_defaults(func=cmd_update)
+
+    # ---- 开庭看板 ----
+    hp = sub.add_parser("hearing", help="开庭公告看板（采集/导出/统计）")
+    hsub = hp.add_subparsers(dest="hcmd", required=True)
+
+    def _hcommon(p):
+        p.add_argument("--kw", help="只用单个案由关键词")
+        p.add_argument("--pages", type=int, help="每个关键词最多翻页数")
+        p.add_argument("--limit", type=int, help="最多入池条数")
+        p.add_argument("--source", help="all(默认) / rmfygg_kt / court_schedule")
+
+    p = hsub.add_parser("crawl", help="采集开庭公告")
+    _hcommon(p)
+    p.set_defaults(func=cmd_h_crawl)
+
+    p = hsub.add_parser("update", help="采集 + 去重 + 导出")
+    _hcommon(p)
+    p.set_defaults(func=cmd_h_update)
+
+    hsub.add_parser("export", help="只导出看板数据").set_defaults(func=cmd_h_export)
+    hsub.add_parser("reparse", help="用最新规则重解").set_defaults(func=cmd_h_reparse)
+    hsub.add_parser("stats", help="开庭库统计").set_defaults(func=cmd_h_stats)
+
+    p = hsub.add_parser("serve", help="打开开庭看板")
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8848)))
+    p.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(func=cmd_h_serve)
 
     args = ap.parse_args()
     args.func(args)

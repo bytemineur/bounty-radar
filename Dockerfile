@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1
 
-# 执行悬赏公告看板 —— 零第三方依赖，只需要标准库
+# 法院公告雷达 —— 零第三方依赖，只需要标准库
+# 内置两块看板：执行悬赏公告（index.html）、法院开庭公告（hearings.html）
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="bounty-radar" \
-      org.opencontainers.image.description="全国法院执行悬赏公告采集与筛选看板" \
+      org.opencontainers.image.description="全国法院执行悬赏公告与开庭公告采集、筛选看板" \
       org.opencontainers.image.source="https://github.com/bytemineur/bounty-radar" \
       org.opencontainers.image.licenses="MIT"
 

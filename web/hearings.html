@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>法院开庭公告看板 · 商事案件线索</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="hearing.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo hlogo">庭</div>
+    <div>
+      <h1>法院开庭公告看板</h1>
+      <p class="sub">商事案件开庭线索 · 被告为企业 / 案由 / 开庭倒计时 / 涉案金额</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <a class="btn ghost" href="index.html">悬赏公告看板 →</a>
+    <span class="updated" id="updatedAt">—</span>
+    <button class="btn ghost" id="btnExport">导出筛选结果 CSV</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- 精准线索提示条 -->
+  <section class="preset-bar">
+    <div class="preset-text">
+      <b>精准获客口径</b>：被告为企业 + 商事案由 + 开庭在 15–30 天内。
+      这类被告通常刚收到传票、尚未委托律师。
+    </div>
+    <button class="btn primary" id="btnPreset">一键套用精准筛选</button>
+  </section>
+
+  <!-- 统计卡 -->
+  <section class="stats" id="stats"></section>
+
+  <!-- 筛选 -->
+  <section class="panel filters">
+    <div class="panel-head">
+      <h2>筛选条件</h2>
+      <div class="head-actions">
+        <button class="btn tiny ghost" id="btnToggleFilter">收起</button>
+        <button class="btn tiny ghost" id="btnReset">重置</button>
+      </div>
+    </div>
+
+    <div id="filterBody">
+      <div class="fgrid">
+
+        <div class="fitem">
+          <label>开庭日期</label>
+          <div class="range">
+            <input type="date" id="fDateFrom"><span>至</span><input type="date" id="fDateTo">
+          </div>
+          <div class="hints">
+            <button class="chip" data-days="0,7">7 天内</button>
+            <button class="chip" data-days="0,15">15 天内</button>
+            <button class="chip" data-days="15,30">15–30 天</button>
+            <button class="chip" data-days="30,60">30–60 天</button>
+          </div>
+        </div>
+
+        <div class="fitem">
+          <label>涉案金额（万元）</label>
+          <div class="range">
+            <input type="number" id="fAmtMin" placeholder="不限" min="0" step="1">
+            <span>至</span>
+            <input type="number" id="fAmtMax" placeholder="不限" min="0" step="1">
+          </div>
+          <div class="hints">
+            <button class="chip" data-amt="0,50">50 万以下</button>
+            <button class="chip" data-amt="50,500">50–500 万</button>
+            <button class="chip" data-amt="500,9999999">500 万以上</button>
+          </div>
+        </div>
+
+        <div class="fitem">
+          <label>被告类型</label>
+          <select id="fDefType">
+            <option value="">全部被告</option>
+            <option value="company">仅企业</option>
+            <option value="company,mixed">企业（含企业+个人混合）</option>
+            <option value="mixed">企业与个人混合</option>
+            <option value="person">仅自然人</option>
+            <option value="unknown">未披露当事人</option>
+          </select>
+          <div class="hints">
+            <button class="chip" id="chipCommercial">只看商事案由</button>
+          </div>
+        </div>
+
+        <div class="fitem">
+          <label>数据源</label>
+          <div class="chips" id="srcChips"></div>
+        </div>
+
+        <div class="fitem wide">
+          <label>关键词</label>
+          <input type="search" id="fKeyword" placeholder="搜索法院 / 案由 / 原告 / 被告 / 案号 / 公告正文…">
+        </div>
+      </div>
+
+      <div class="fitem groupbox">
+        <label>案由分组（可多选）</label>
+        <div class="chips" id="groupChips"></div>
+      </div>
+
+      <div class="fitem provbox">
+        <label>地区（可多选）</label>
+        <div class="chips" id="provChips"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 图表 -->
+  <section class="charts">
+    <div class="panel chart-card">
+      <div class="panel-head"><h2>开庭日程分布</h2><span class="hint" id="trendHint"></span></div>
+      <div id="chartTrend" class="chart"></div>
+    </div>
+    <div class="panel chart-card">
+      <div class="panel-head"><h2>案由分布 TOP 8</h2></div>
+      <div id="chartCause" class="chart"></div>
+    </div>
+    <div class="panel chart-card">
+      <div class="panel-head"><h2>地区分布 TOP 8</h2></div>
+      <div id="chartProv" class="chart"></div>
+    </div>
+  </section>
+
+  <!-- 表格 -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>开庭明细 <span class="count" id="resultCount"></span></h2>
+      <div class="head-actions">
+        <label class="mini">排序</label>
+        <select id="fSort" class="mini-select">
+          <option value="value_desc">线索价值优先</option>
+          <option value="hea_asc">开庭时间 ↑（临期优先）</option>
+          <option value="hea_desc">开庭时间 ↓</option>
+          <option value="amount_desc">涉案金额 ↓</option>
+          <option value="amount_asc">涉案金额 ↑</option>
+          <option value="pub_desc">发布日期 ↓</option>
+        </select>
+        <label class="mini">每页</label>
+        <select id="fPageSize" class="mini-select">
+          <option>20</option><option>50</option><option>100</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th class="c-hearing sortable" data-sort="hea">开庭时间</th>
+            <th class="c-court">法院</th>
+            <th class="c-cause sortable" data-sort="cause">案由</th>
+            <th class="c-party">被告</th>
+            <th class="c-party">原告</th>
+            <th class="c-case">案号</th>
+            <th class="c-num sortable" data-sort="amount">涉案金额</th>
+            <th class="c-room">法庭</th>
+            <th class="c-type">来源</th>
+            <th class="c-act"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty" id="empty" hidden>没有符合条件的开庭公告，试试放宽筛选条件。</div>
+    </div>
+
+    <div class="pager">
+      <span id="pageInfo"></span>
+      <div class="pager-btns" id="pagerBtns"></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>数据来源：人民法院公告网（rmfygg.court.gov.cn）「开庭传票 / 起诉状副本及开庭传票」类公告，以及法院官网直接发布的开庭排期表。</p>
+    <p>案由、当事人、开庭时间、涉案金额均为程序从公告正文抽取，可能存在误差；排期表类数据仅含案号 / 案由 / 时间 / 法庭，不含当事人。具体以法院公告原文为准，不构成法律意见。</p>
+  </footer>
+</main>
+
+<!-- 详情弹窗 -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-body">
+    <div class="modal-head">
+      <h3 id="mTitle"></h3>
+      <button class="x" data-close>×</button>
+    </div>
+    <div class="modal-content" id="mContent"></div>
+    <div class="modal-foot">
+      <a id="mLink" class="btn primary" target="_blank" rel="noopener">查看公告原文</a>
+      <button class="btn ghost" data-close>关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="data/hearings.js"></script>
+<script src="hearing.js"></script>
+</body>
+</html>

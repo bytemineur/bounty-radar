@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
-"""看板交互回归测试：把 tests/selftest.js 注入 index.html，用本机 Chrome 无头运行。
+"""看板交互回归测试：把 tests/selftest*.js 注入对应页面，用本机 Chrome 无头运行。
 
-用法：python tests/run_ui_test.py
+用法：
+  python tests/run_ui_test.py                    # 悬赏看板（index.html + selftest.js）
+  python tests/run_ui_test.py hearing            # 开庭看板（hearings.html + selftest_hearing.js）
+  python tests/run_ui_test.py all                # 两块都跑
+
 零第三方依赖，找不到 Chrome 时回退 Edge。
 """
 import os
 import re
 import subprocess
 import sys
-import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(ROOT, "web")
@@ -26,6 +29,11 @@ CHROME_CANDIDATES = [
     "/snap/bin/chromium",
 ]
 
+SUITES = {
+    "bounty": ("index.html", "selftest.js", "悬赏看板"),
+    "hearing": ("hearings.html", "selftest_hearing.js", "开庭看板"),
+}
+
 
 def find_browser():
     for p in CHROME_CANDIDATES:
@@ -34,19 +42,19 @@ def find_browser():
     raise SystemExit("未找到 Chrome / Edge，无法运行 UI 测试")
 
 
-def main():
-    index = open(os.path.join(WEB, "index.html"), encoding="utf-8").read()
-    script = open(os.path.join(ROOT, "tests", "selftest.js"), encoding="utf-8").read()
-    page = index.replace("</body>", "<script>\n" + script + "\n</script>\n</body>")
+def run_suite(browser, page, script_name, title):
+    index = open(os.path.join(WEB, page), encoding="utf-8").read()
+    script = open(os.path.join(ROOT, "tests", script_name), encoding="utf-8").read()
+    page_html = index.replace("</body>", "<script>\n" + script + "\n</script>\n</body>")
 
     tmp = os.path.join(WEB, "_ui_test.html")
     with open(tmp, "w", encoding="utf-8") as f:
-        f.write(page)
+        f.write(page_html)
 
     try:
         out = subprocess.run(
-            [find_browser(), "--headless=new", "--disable-gpu",
-             "--no-sandbox", "--disable-dev-shm-usage",   # 容器/CI 里常见需要
+            [browser, "--headless=new", "--disable-gpu",
+             "--no-sandbox", "--disable-dev-shm-usage",
              "--dump-dom", "--virtual-time-budget=20000",
              "file:///" + tmp.replace("\\", "/")],
             capture_output=True, text=True, encoding="utf-8", errors="ignore", timeout=180,
@@ -54,17 +62,35 @@ def main():
     finally:
         os.path.exists(tmp) and os.remove(tmp)
 
-    m = re.search(r'<pre id="testout">(.*?)</pre>', out, re.S)
+    print("\n=== %s (%s) ===" % (title, page))
+    m = re.search(r'<pre[^>]*id="testout"[^>]*>(.*?)</pre>', out, re.S)
     if not m:
         print("未拿到测试输出，页面可能加载失败")
-        return 1
+        return 1, 0
 
-    lines = [l for l in m.group(1).split("\n") if l.startswith("TEST|")]
+    lines = [l for l in m.group(1).split("\n")
+             if l.startswith("TEST|") and "WAIT" not in l]
     fails = [l for l in lines if "FAIL" in l or "CRASH" in l]
     for l in lines:
         print(l.replace("TEST| ", ""))
-    print("\n%d 项断言，%d 项失败" % (len(lines), len(fails)))
-    return 1 if fails else 0
+    return (1 if fails else 0), len(lines)
+
+
+def main():
+    target = (sys.argv[1] if len(sys.argv) > 1 else "bounty").lower()
+    keys = list(SUITES) if target == "all" else [target]
+    if any(k not in SUITES for k in keys):
+        raise SystemExit("未知目标: %s（可选 bounty / hearing / all）" % target)
+
+    browser = find_browser()
+    rc, total = 0, 0
+    for k in keys:
+        page, script_name, title = SUITES[k]
+        r, n = run_suite(browser, page, script_name, title)
+        rc |= r
+        total += n
+    print("\n合计 %d 项断言" % total)
+    return rc
 
 
 if __name__ == "__main__":

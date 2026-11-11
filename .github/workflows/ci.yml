@@ -33,11 +33,11 @@ jobs:
           python -c "import sqlite3, urllib.request, json; print('stdlib ok')"
 
       - name: 解析器回归测试
-        run: python -m unittest tests.test_parser -v
+        run: python -m unittest tests.test_parser tests.test_hearing_parser -v
 
       - name: 看板交互回归（无头 Chrome）
         if: matrix.python == '3.12'
-        run: python tests/run_ui_test.py
+        run: python tests/run_ui_test.py all
 
       - name: 导出管线冒烟测试
         if: matrix.python == '3.12'
@@ -45,6 +45,9 @@ jobs:
           python cli.py export
           test -s web/data/bounties.js
           python cli.py stats | head -5
+          python cli.py hearing export
+          test -s web/data/hearings.js
+          python cli.py hearing stats | head -5
 
   docker:
     name: 镜像构建与冒烟
@@ -64,7 +67,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: 起容器并请求首页
+      - name: 起容器并请求两块看板
         run: |
           docker run -d --name br -p 8848:8848 bounty-radar:ci
           for i in $(seq 1 30); do
@@ -74,6 +77,11 @@ jobs:
           grep -q "执行悬赏公告看板" /tmp/index.html
           curl -fsS http://127.0.0.1:8848/data/bounties.js -o /tmp/b.js
           grep -q "__BOUNTY_DATA__" /tmp/b.js
+
+          curl -fsS http://127.0.0.1:8848/hearings.html -o /tmp/h.html
+          grep -q "法院开庭公告看板" /tmp/h.html
+          curl -fsS http://127.0.0.1:8848/data/hearings.js -o /tmp/h.js
+          grep -q "__HEARING_DATA__" /tmp/h.js
           echo "容器健康检查: $(docker inspect -f '{{.State.Health.Status}}' br)"
 
       - name: 清理

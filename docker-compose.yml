@@ -1,5 +1,7 @@
 services:
   # 看板：起一个静态服务，把 web/ 目录在 8848 端口暴露出去
+  #   http://localhost:8848/index.html     执行悬赏公告看板
+  #   http://localhost:8848/hearings.html  法院开庭公告看板
   dashboard:
     build: .
     image: bounty-radar:latest
@@ -15,12 +17,12 @@ services:
       - ./web:/app/web:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8848/index.html', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8848/index.html', timeout=3); u.urlopen('http://127.0.0.1:8848/hearings.html', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
 
-  # 采集：一次性任务，docker compose run --rm crawl
+  # 采集（悬赏）：一次性任务，docker compose run --rm crawl
   # 需要写数据库和导出文件，所以 data/ 与 web/data/ 都挂可写
   crawl:
     build: .
@@ -35,3 +37,17 @@ services:
     # 容器内是非 root(uid 1000)，Linux 下宿主机目录属主不同时用：
     #   docker compose run --rm --user "$(id -u):$(id -g)" crawl
     user: "${UID:-1000}:${GID:-1000}"
+
+  # 采集（开庭）：docker compose run --rm crawl-hearing
+  crawl-hearing:
+    build: .
+    image: bounty-radar:latest
+    profiles: ["crawl"]
+    command: ["hearing", "update"]
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/app/data
+      - ./web/data:/app/web/data
+    user: "${UID:-1000}:${GID:-1000}"
+

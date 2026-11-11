@@ -1,0 +1,83 @@
+/* 开庭公告看板 —— 在 style.css 之上补充的少量样式 */
+
+.hlogo { background: linear-gradient(135deg, #0f766e, #115e59); }
+
+/* 精准口径提示条 */
+.preset-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(90deg, #eef6ff, #f7fbff);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  padding: 11px 16px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.preset-text b { color: var(--accent); }
+
+/* 案由分组单独一行 */
+.groupbox { padding: 0 16px 14px; }
+
+/* 倒计时徽章 */
+.days {
+  display: inline-block;
+  min-width: 46px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.days.hot   { background: #fee4e2; color: #b42318; }   /* 7 天内 */
+.days.soon  { background: #fff4e5; color: #a35a00; }   /* 8-15 天 */
+.days.plan  { background: var(--accent-soft); color: #1a41b8; } /* 16-30 天 */
+.days.far   { background: #f2f4f7; color: var(--muted); }  /* 30 天以上 */
+.days.past  { background: #f4f5f7; color: #b0b7c3; text-decoration: line-through; }
+.days.tbd   { background: #f4f5f7; color: #b0b7c3; }
+
+.hearing-cell { line-height: 1.35; }
+.hearing-time { font-variant-numeric: tabular-nums; font-weight: 500; }
+.hearing-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.est-mark { font-size: 10px; color: var(--warn); border: 1px solid #ffd8a8;
+  background: var(--warn-soft); border-radius: 4px; padding: 0 3px; margin-left: 3px; }
+
+/* 案由分组配色 */
+.tag.g-建筑工程 { background: #eef3ff; color: #1a41b8; }
+.tag.g-票据     { background: #f4ecff; color: #6941c6; }
+.tag.g-商标知产 { background: #fdf2fa; color: #c11574; }
+.tag.g-金融借贷 { background: #ecfdf3; color: #027a48; }
+.tag.g-公司股权 { background: #fff6ed; color: #b54708; }
+.tag.g-合同纠纷 { background: #f0f9ff; color: #026aa2; }
+.tag.g-其他民商 { background: #f2f4f7; color: var(--text-2); }
+.tag.g-none     { background: #f8f9fb; color: #98a2b3; }
+
+/* 企业标记 */
+.ent {
+  display: inline-block;
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  background: #e6f4ef;
+  color: #0d7a52;
+  font-weight: 500;
+  vertical-align: 1px;
+}
+
+.party-name { display: block; max-width: 240px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.party-sub { font-size: 11px; color: var(--muted); }
+
+.c-hearing { min-width: 118px; }
+.c-cause { min-width: 150px; }
+.c-party { min-width: 150px; max-width: 260px; }
+.c-room { min-width: 110px; font-size: 12px; color: var(--text-2); }
+
+.stats.six { grid-template-columns: repeat(5, 1fr); }
