@@ -49,7 +49,7 @@
       if (s.validOnly) { if (!r.vto || r.vto < today) return false; }
       if (s.prov && (r.prov || "未识别") !== s.prov) return false;
       if (s.kw) {
-        var hay = ((r.court || "") + " " + (r.debtor || "") + " " + (r.caseNo || "") + " " + (r.snip || "")).toLowerCase();
+        var hay = ((r.court || "") + " " + (r.debtor || "") + " " + (r.caseNo || "") + " " + (r.body || "")).toLowerCase();
         if (hay.indexOf(s.kw.toLowerCase()) === -1) return false;
       }
       return true;

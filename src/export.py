@@ -34,8 +34,21 @@ COLUMNS = [
     ("contact_phone", "phone"),
     ("parse_quality", "q"),
     ("url", "url"),
-    ("content", "snip"),
+    ("content", "body"),
 ]
+
+# 正文全文上限。源站详情页有 WAF 拦截（高频访问直接 403），看板必须自带全文，
+# 否则原文链接一打不开，整条数据就没有可读内容了。
+BODY_LIMIT = 8000
+
+
+def _body(v):
+    """正文归一化：压掉多余空白，超长截断。"""
+    if not v:
+        return None
+    s = " ".join(str(v).split())
+    return s[:BODY_LIMIT] if len(s) > BODY_LIMIT else s
+
 
 # 数据源可读名（看板筛选器展示用）
 SOURCE_LABELS = {
@@ -53,8 +66,8 @@ def load_rows(conn):
             v = r[col]
             if k == "ratio" and v is not None:
                 v = round(float(v) * 100, 3)      # 转成百分数便于前端展示
-            if k == "snip" and v:
-                v = " ".join(str(v).split())[:300]
+            if k == "body":
+                v = _body(v)
             d[k] = v
         out.append(d)
     return out
@@ -134,7 +147,7 @@ HEARING_COLUMNS = [
     ("publish_date", "pub"),
     ("parse_quality", "q"),
     ("url", "url"),
-    ("content", "snip"),
+    ("content", "body"),
 ]
 
 HEARING_SOURCE_LABELS = {
@@ -153,8 +166,8 @@ def load_hearing_rows(conn):
         d = {}
         for col, k in HEARING_COLUMNS:
             v = r[col]
-            if k == "snip" and v:
-                v = " ".join(str(v).split())[:400]
+            if k == "body":
+                v = _body(v)
             d[k] = v
         # 距开庭天数：负数表示已过期，前端会重算以保持"今天"准确
         if r["hearing_date"]:

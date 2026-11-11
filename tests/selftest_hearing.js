@@ -129,7 +129,7 @@
     try {
       var rs = rows();
       var bad = rs.filter(function (r) {
-        var hay = [r.court, r.cause, r.plaintiff, r.defendant, r.caseNo, r.room, r.snip]
+        var hay = [r.court, r.cause, r.plaintiff, r.defendant, r.caseNo, r.room, r.body]
           .join(" ").toLowerCase();
         return hay.indexOf("建设工程") === -1;
       });

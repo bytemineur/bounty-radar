@@ -96,7 +96,7 @@
         if (!state.sources.has(s)) return false;
       }
       if (kw) {
-        var hay = ((r.court || "") + " " + (r.debtor || "") + " " + (r.caseNo || "") + " " + (r.snip || "")).toLowerCase();
+        var hay = ((r.court || "") + " " + (r.debtor || "") + " " + (r.caseNo || "") + " " + (r.body || "")).toLowerCase();
         if (hay.indexOf(kw) === -1) return false;
       }
       return true;
@@ -441,9 +441,22 @@
     var html = '<dl class="kv">' + kv.map(function (x) {
       return "<dt>" + x[0] + "</dt><dd>" + x[1] + "</dd>";
     }).join("") + "</dl>";
-    html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">公告正文（节选）</div>';
-    html += '<div class="fulltext">' + esc(r.snip || "（无正文）") + "</div>";
+    var body = r.body || "";
+    html += '<div class="body-head"><span>公告正文 · 本地留存快照</span>' +
+      (body ? '<button class="btn tiny" id="mCopy">复制全文</button>' : "") + "</div>";
+    html += '<div class="fulltext" id="mBody">' + esc(body || "（无正文）") + "</div>";
+    html += '<p class="waf-note">原文链接指向法院官网详情页，该页有 Web 应用防火墙：' +
+      "短时间多次访问会被判定为异常并返回 403 拦截页（带请求 UUID）。上面的正文是采集时的快照，不受影响。</p>";
     $("mContent").innerHTML = html;
+
+    var copyBtn = $("mCopy");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        copyText(body);
+        copyBtn.textContent = "已复制";
+        setTimeout(function () { copyBtn.textContent = "复制全文"; }, 1500);
+      });
+    }
 
     var link = $("mLink");
     if (r.url) { link.href = r.url; link.style.display = ""; }
@@ -452,13 +465,30 @@
     $("modal").hidden = false;
   }
 
+  function copyText(s) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(s);
+        return;
+      }
+    } catch (e) { /* 降级到 execCommand */ }
+    var ta = document.createElement("textarea");
+    ta.value = s;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) { /* 忽略 */ }
+    ta.remove();
+  }
+
   function closeModal() { $("modal").hidden = true; }
 
   /* ---------------- CSV ---------------- */
   function exportCSV() {
     var head = ["法院", "省份", "城市", "被执行人", "执行案号", "执行标的(元)", "奖励比例(%)",
                 "封顶金额(元)", "固定赏金(元)", "预估最高奖励(元)", "悬赏类型", "发布日期",
-                "悬赏截止", "联系电话", "公告链接"];
+                "悬赏截止", "联系电话", "公告链接", "公告正文"];
     var lines = [head.join(",")];
     filtered.forEach(function (r) {
       var cells = [
@@ -468,7 +498,7 @@
         num(r.cap) ? Math.round(r.cap) : "",
         num(r.fixed) ? Math.round(r.fixed) : "",
         num(r.est) ? Math.round(r.est) : "",
-        TYPE_LABEL[r.type] || "", r.pub, r.vto, r.phone, r.url
+        TYPE_LABEL[r.type] || "", r.pub, r.vto, r.phone, r.url, r.body || ""
       ];
       lines.push(cells.map(function (c) {
         var s = c == null ? "" : String(c);
