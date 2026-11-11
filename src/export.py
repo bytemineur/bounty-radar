@@ -16,6 +16,7 @@ import db
 # (数据库列名, 前端字段名)
 COLUMNS = [
     ("id", "id"),
+    ("source", "src"),
     ("court", "court"),
     ("province", "prov"),
     ("city", "city"),
@@ -36,6 +37,12 @@ COLUMNS = [
     ("content", "snip"),
 ]
 
+# 数据源可读名（看板筛选器展示用）
+SOURCE_LABELS = {
+    "rmfygg": "人民法院公告网",
+    "court": "法院官网",
+}
+
 
 def load_rows(conn):
     sql = "SELECT * FROM notices ORDER BY publish_date DESC, id DESC"
@@ -55,15 +62,20 @@ def load_rows(conn):
 
 def build_meta(rows):
     provs = {}
+    srcs = {}
     for r in rows:
         p = r.get("prov") or "未识别"
         provs[p] = provs.get(p, 0) + 1
+        s = r.get("src") or "unknown"
+        srcs[s] = srcs.get(s, 0) + 1
     ests = [r["est"] for r in rows if r.get("est")]
     subs = [r["subject"] for r in rows if r.get("subject")]
     return {
         "generatedAt": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M"),
         "count": len(rows),
         "provinces": dict(sorted(provs.items(), key=lambda x: -x[1])),
+        "sources": [{"key": k, "label": SOURCE_LABELS.get(k, k), "n": v}
+                    for k, v in sorted(srcs.items(), key=lambda x: -x[1])],
         "sumEst": round(sum(ests), 2) if ests else 0,
         "sumSubject": round(sum(subs), 2) if subs else 0,
         "maxEst": round(max(ests), 2) if ests else 0,

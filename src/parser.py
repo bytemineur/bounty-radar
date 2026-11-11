@@ -107,15 +107,19 @@ def parse_amount_at(text, pos, window=8):
 # ---------------- 各字段抽取 ----------------
 
 SUBJECT_PATTERNS = [
+    # "执行标的：本金5000万元及迟延履行期间…"（金额前还有"本金/人民币"等修饰）
+    r"执行标的(?:额|金额)?\s*(?:为|是)?\s*:?\s*(?:本金|人民币|款项)?\s*(?:人民币)?\s*" + _AMT_U,
     r"执行标的(?:额|金额)?\s*(?:为|是)?\s*:?\s*(?:人民币)?\s*" + _AMT_U,
-    r"未履行(?:的)?(?:标的|标的额|金额|债务)\s*(?:为|是)?\s*:?\s*(?:人民币)?\s*" + _AMT_U,
+    r"未履行(?:的)?(?:标的|标的额|金额|债务)\s*(?:为|是)?\s*:?\s*(?:本金|人民币)?\s*" + _AMT_U,
     r"涉案标的(?:额|金额)?\s*(?:为|是)?\s*:?\s*(?:人民币)?\s*" + _AMT_U,
     r"标的额\s*(?:为|是)?\s*:?\s*(?:人民币)?\s*" + _AMT_U,
     r"申请执行(?:的)?(?:标的|金额|标的额)\s*(?:为|是)?\s*:?\s*(?:人民币)?\s*" + _AMT_U,
     # "请求强制被执行人潘伟胜支付228万元及利息" / "偿付人民币408287.36元"
     r"请求(?:依法)?(?:强制)?(?:被执行人|被申请人)[^。;]{0,30}?(?:支付|偿付|给付|偿还|归还)\s*(?:人民币)?\s*" + _AMT_U,
-    # "支付借款1120000元" "偿付款项248499.13元" "支付保险赔偿款3374752.44元"
-    r"(?:支付|偿付|偿还|归还|给付)(?:款项|借款|欠款|货款|本金|工程款|工资|劳动报酬|赔偿款|保险赔偿款|执行款)(?:本金)?\s*(?:人民币)?\s*" + _AMT_U,
+    # "支付借款1120000元" "偿付款项248499.13元" "支付保险赔偿款3374752.44元" "请求返还款项375899.68元"
+    r"(?:支付|偿付|偿还|归还|给付|返还|退还)(?:款项|借款|欠款|货款|本金|工程款|工资|劳动报酬|赔偿款|保险赔偿款|执行款)(?:本金)?\s*(?:人民币)?\s*" + _AMT_U,
+    # "赔偿损失213811.91元"
+    r"赔偿(?:损失|金|款)\s*(?:人民币)?\s*" + _AMT_U,
     # "保险赔偿款3374752.44元" / "赔偿金86万元"
     r"(?:赔偿款|赔偿金|保险金|代偿款)\s*(?:人民币)?\s*" + _AMT_U,
     r"(?:借款|欠款|货款)本金\s*(?:人民币)?\s*(?:\([^)]{0,8}\))?\s*" + _AMT_U,
@@ -137,6 +141,8 @@ RATIO_WEAK = [
 CAP_PATTERNS = [
     r"(?:最高|上限|封顶)(?:不超过|不高于|为|金额为)?\s*(?:人民币)?\s*" + _AMT_U,
     r"悬赏(?:总|总金额|总额)?(?:金额)?(?:不超过|上限为?)\s*(?:人民币)?\s*" + _AMT_U,
+    # "（含税，以215737.51元为限）"
+    r"以\s*(?:人民币)?\s*" + _AMT_U + r"\s*为限",
     r"不超过(?:人民币)?\s*" + _AMT_U,
 ]
 
@@ -271,6 +277,15 @@ def extract_fixed(text):
             after = text[m.end(): m.end() + 3]
             if "%" in after:      # "为执行到位金额的5%" 不是固定额
                 continue
+            # 金额之后同句内出现百分比 → 属于分段费率档位表
+            # （"执行到位款项5000万元以内的，按5%发放悬赏金"），不是固定赏金
+            s_end = scope.find("。", m.end())
+            s_end = len(scope) if s_end < 0 else s_end
+            if re.search(r"\d+(?:\.\d+)?\s*%", scope[m.end():s_end]):
+                continue
+            # "以215737.51元为限" 是封顶额，不是固定赏金
+            if re.match(r"\s*元?\s*为\s*限", scope[m.end(): m.end() + 10]):
+                continue
             # 前面是"最高不超过/上限/封顶"的，是封顶额不是固定赏金
             before = scope[max(0, m.start() - 16): m.start()]
             if re.search(r"(最高|不超过|不高于|上限|封顶)", before):
@@ -340,6 +355,79 @@ def extract_debtor_count(text):
     """估算被执行人数：统计"被执行人:"出现次数 + 顿号人数描述。"""
     n = len(re.findall(r"被执行人(?:一|二|三|四|五|六|七|八|九|十|\d)?\s*[:：]", text))
     return max(n, 1)
+
+
+# 抽被执行人时常见的"假名字"（公告正文里的泛指表述）
+_DEBTOR_BAD = (
+    "财产", "下落", "未履行", "拒不", "名下", "线索", "信息", "已经履行",
+    "存在", "户籍", "身份", "基本", "其他", "有关", "所提供", "具体", "相关",
+    "可供执行", "隐匿", "转移", "履行", "悬赏", "本院", "申请执行人",
+)
+_CN_NAME = r"[\u4e00-\u9fa5A-Za-z·]{2,40}"
+# 案由词：名字无标点直接粘连案由时（"董德波借款合同纠纷"）用它切开
+_CAUSE_RE = re.compile(
+    r"(?:借款|民间借贷|买卖|承揽|劳动争议|合同|损害|合伙|不当得利|机动车|"
+    r"房屋|金融|租赁|建设工程|追偿|保险|票据|婚姻|继承|仲裁裁决|非涉外)")
+_COMPANY_TAIL = re.compile(
+    r"(有限公司|有限责任公司|股份公司|股份有限责任公司|合伙企业|合作社|"
+    r"事务所|经营部|工作室|中心|厂|银行|分公司)$")
+
+
+def _clean_debtor(s):
+    s = (s or "").strip()
+    s = re.sub(r"^[：:、\s]+", "", s)
+    s = re.sub(r"[（(][^）)]{0,24}[）)]", "", s)      # 去掉括号注释
+    # 砍掉紧跟的证件/住址说明（"刘庆明身份证号：..."）
+    s = re.split(r"身份证|公民身份|身份号码|住址|住所地|统一社会信用|法定代表人", s)[0]
+    s = re.split(r"[，,。；;、\s]", s)[0].strip()
+    # 名字后面没标点、直接粘连案由的情况
+    if s and not _COMPANY_TAIL.search(s):
+        s = _CAUSE_RE.split(s)[0].strip()
+    if not s or not (2 <= len(s) <= 40):
+        return None
+    if any(b in s for b in _DEBTOR_BAD):
+        return None
+    if re.fullmatch(r"[0-9\W]+", s):
+        return None
+    return s
+
+
+def extract_debtor(text):
+    """从正文抽第一个被执行人名称（个人或单位）。
+
+    公告网接口自带该字段（tosendPeople），只有法院官网源需要从这里抽。
+    """
+    if not text:
+        return None
+    t = re.sub(r"\s+", " ", text)
+
+    # 1) 明确列举：被执行人：XXX，男/女… | 被执行人：XX有限公司，住所地…
+    for m in re.finditer(r"被执行人[一二三四五六七八九十\d]?\s*[：:]\s*(" + _CN_NAME + ")", t):
+        c = _clean_debtor(m.group(1))
+        if c:
+            return c
+
+    # 2) 无冒号但紧跟性别：（被执行人周赵，男）
+    for m in re.finditer(r"被执行人\s*(" + _CN_NAME + r")\s*[，,]\s*(?:男|女)", t):
+        c = _clean_debtor(m.group(1))
+        if c:
+            return c
+
+    # 3) 名字后跟案由：被执行人董德波借款合同纠纷一案
+    #    用贪婪匹配再回溯到"纠纷"前，这样顿号并列的名单能整段吃掉，
+    #    _clean_debtor 只取第一个，避免把"吴流明"截成"吴流"。
+    for m in re.finditer(r"被执行人\s*([^\n。；;]{2,120})(?=[^。；;]{0,16}纠纷)", t):
+        c = _clean_debtor(m.group(1))
+        if c:
+            return c
+
+    # 4) 名字后跟"发布悬赏公告"/"的财产"/"名下"
+    for m in re.finditer(r"被执行人\s*(" + _CN_NAME + r"?)(?=发布|的财产|的线索|名下)", t):
+        c = _clean_debtor(m.group(1))
+        if c:
+            return c
+
+    return None
 
 
 def looks_like_bounty(text):
@@ -421,6 +509,7 @@ def parse_notice(content, publish_date=None):
         "case_no": case_no,
         "contact_phone": extract_phone(text),
         "debtor_count": extract_debtor_count(text),
+        "debtor": extract_debtor(text),
         "parse_quality": round(quality, 2),
         "content_norm": text,
     }

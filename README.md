@@ -10,9 +10,10 @@
 
 ![看板截图](docs/screenshot.png)
 
-- 数据源：人民法院公告网（rmfygg.court.gov.cn）公开公告
+- 数据源：人民法院公告网（全国） + 深圳中院 / 南山 / 福田三家法院官网的悬赏公告栏目
 - 技术栈：Python 标准库 + SQLite + 原生 HTML/JS，**零第三方依赖**
-- 当前库存：402 条公告，覆盖 77 家法院、18 个省级行政区
+- 当前库存：**761 条公告**，覆盖 80 家法院、18 个省级行政区
+- 已解析字段：被执行人 88%、执行标的 72%、奖励比例 84%、可推算预估奖励 66%
 
 ## Docker 启动（推荐）
 
@@ -28,8 +29,9 @@ docker compose up -d --build
 
 ```bash
 docker compose logs -f dashboard              # 看日志
-docker compose run --rm crawl                 # 增量采集（写入宿主机 data/ 与 web/data/）
+docker compose run --rm crawl                 # 增量采集（公告网 + 法院官网）
 docker compose run --rm crawl update          # 采集 + 重新解析 + 导出，一条命令
+docker compose run --rm --entrypoint python crawl cli.py crawl --source court  # 只抓法院官网
 docker compose run --rm --entrypoint python crawl cli.py stats   # 查看库内统计
 docker compose down                           # 停止
 ```
@@ -76,6 +78,7 @@ python cli.py export    # 只重新导出看板数据
 - **执行标的**：万元区间 + 50 万以下 / 50–500 万 / 500 万以上
 - **奖励比例**：百分比区间 + ≥10% / ≥20% / ≤5%
 - **最高奖励（预估）**：金额区间 + ≥1 万 / ≥10 万 / ≥100 万
+- **数据源**：人民法院公告网 / 法院官网，多选（带条数）
 - **地区**：省级多选（带条数）
 - **悬赏类型**：财产线索 / 下落行踪 / 两者
 - **悬赏期有效性**：仅看当前仍在悬赏期内的公告
@@ -111,8 +114,9 @@ bounty-radar/
 ├── docker-compose.yml        dashboard + crawl 两个服务
 ├── Makefile                  常用命令封装
 ├── src/
-│   ├── http_client.py        限速/重试/403 冷却的 HTTP 客户端
+│   ├── http_client.py        限速/重试/403 冷却/自动 TLS 降级的 HTTP 客户端
 │   ├── sources/rmfygg.py     人民法院公告网采集器（逆向 DataTables 接口）
+│   ├── sources/court_sites.py 各地法院官网栏目采集器（通用 CMS 解析）
 │   ├── parser.py             公告正文解析：标的/比例/封顶/赏金/期限/案号/电话
 │   ├── db.py                 SQLite schema 与幂等写入
 │   ├── pipeline.py           采集 → 解析 → 入库
@@ -125,6 +129,41 @@ bounty-radar/
 ├── tests/run_ui_test.py      注入 selftest.js，用无头浏览器跑交互测试
 └── docs/screenshot.png       看板截图
 ```
+
+## 数据源
+
+两类源，可单独跑或一起跑（`--source rmfygg|court|all`）：
+
+| source | 来源 | 覆盖范围 | 采集方式 |
+|---|---|---|---|
+| `rmfygg` | [人民法院公告网](https://rmfygg.court.gov.cn) | 全国各级法院，按关键词检索 | 逆向站内 DataTables 接口 `initNoticeList`，返回 JSON（含公告全文） |
+| `court` | 各地法院官网的「悬赏公告」栏目 | 按法院逐站配置 | 解析栏目列表页（静态分页）+ 详情页正文提取 |
+
+已接入的法院官网栏目见 `config.py` 的 `COURT_SITES`：
+
+| 法院 | 栏目 | 公告量级 |
+|---|---|---|
+| 广东省深圳市中级人民法院 | 司法公开 › [悬赏公告](https://www.szcourt.gov.cn/xsgg/index.html) | 5 页 / 107 条 |
+| 深圳市南山区人民法院 | 审务公开 › [执行悬赏公告](https://gw.nscourt.gov.cn/nscourt/wzsy/swgk/zxxsgg/index.html) | 3 页 / 60 条 |
+| 深圳市福田区人民法院 | 法院公告 › [悬赏公告](https://www.ftcourt.gov.cn/xwzx/fygg/xsgg/index.html) | 20 页 |
+
+这些站点都用南方网 NFCMS 站群，栏目页是静态分页（`index.html` / `index_2.html` …），
+详情页是 `/content/post_NNNN.html`。所以**新增一个法院只需在 `config.py` 加一条**：
+
+```python
+{
+    "court": "佛山市顺德区人民法院",
+    "base": "https://www.xxx.gov.cn",
+    "prefix": "/xxxx/xsgg",       # 悬赏公告栏目路径
+    "province": "广东省", "city": "佛山市",
+}
+```
+
+不确定某站有哪些栏目时，访问 `<base>/postmeta/catreeall.json` 可拿到全站栏目树 JSON，
+搜 `悬赏` 即可定位。
+
+**正文去重**：同一公告被法院重复发布（不同 URL、正文完全相同）的情况真实存在，
+入库时按正文归一化哈希去重，`python cli.py dedupe` 可清理历史数据。
 
 ## 技术选型
 
@@ -145,8 +184,10 @@ bounty-radar/
 
 ## 扩展新的数据源
 
-在 `src/sources/` 下新增模块，实现一个 `iter_keyword(http, keyword)` 生成器，
-产出至少包含以下键的 dict，然后在 `pipeline.py` 里按源分发：
+**A. 同类法院官网（南方网 CMS）** —— 只在 `config.py` 的 `COURT_SITES` 加一条，无需写代码。
+
+**B. 其他站点** —— 在 `src/sources/` 下新增模块，实现一个生成器，产出至少包含
+以下键的 dict，然后在 `pipeline.py` 里加一个 `crawl_xxx()` 并在 `crawl()` 分发：
 
 ```python
 {"source": "xxx", "source_id": "...", "url": "...", "court": "...",
@@ -157,18 +198,22 @@ bounty-radar/
 
 ## 已知限制
 
-- 数据源目前只有人民法院公告网一家。各地法院官网、法院微信公众号发布的悬赏公告未纳入，
-  实际全国悬赏公告总量远大于 402 条，接入更多源后需扩展 `sources/`。
+- **不是所有法院都有可抓的悬赏栏目**。已实测：深圳宝安、龙岗、前海法院的官网要么没有
+  独立悬赏栏目（混在"执行信息公开/执行曝光台"里且有空栏目），要么列表由 JS 动态加载
+  （如前海 `szqhcourt.gov.cn`），本项目未接入。广州中院站点不是 NFCMS 站群，同样未接入。
+  这些法院的悬赏公告目前只能通过人民法院公告网间接获得。
+- 部分站点使用了非标准 TLS 椭圆曲线，Python 的 OpenSSL 默认会以 `BAD_ECPOINT` 拒绝握手。
+  `http_client.py` 会自动识别并降级到 `SECLEVEL=0` 上下文重试（仅用于公开公告抓取）。
 - 公告正文表述极不统一，"分段费率表""以物抵债另计比例"等复杂条款只能近似解析。
 - 法院名到省份的映射基于内置的地级市词典，个别只写区县名的法院（如"定远县人民法院"）
   只能靠县级词典兜底，仍有少量归入"未识别"。
-- 数据分布由源站决定：广东省占比偏高（222/402），因为深圳龙岗区法院、前海合作区法院
+- 数据分布由源站决定：广东省占比偏高，因为深圳龙岗区法院、前海合作区法院、福田区法院
   在批量发布悬赏公告，并非地区识别错误。
 
 ## 测试
 
 ```bash
-python -m unittest tests.test_parser -v   # 解析器规则，10 项
+python -m unittest tests.test_parser -v   # 解析器规则，13 项
 python tests/run_ui_test.py               # 看板排序 + 全部筛选控件，47 项断言
 ```
 

@@ -34,3 +34,33 @@ USER_AGENT = (
 
 # 仅入库"看起来是执行悬赏公告"的记录，过滤掉普通开庭/送达公告
 REQUIRE_BOUNTY_SIGNAL = True
+
+# ---- 地方法院官网栏目源 ----
+# 均为南方网 NFCMS 站群，栏目页静态分页（index.html / index_2.html ...），
+# 详情页 /content/post_NNNN.html。新增法院只需在这里加一条：
+#   court  发布法院全称（会用于地区识别）
+#   base   站点根，prefix 栏目路径
+# 想确认某站有哪些栏目，可访问 <base>/postmeta/catreeall.json 看全站栏目树。
+COURT_SITES = [
+    {
+        "court": "广东省深圳市中级人民法院",
+        "base": "https://www.szcourt.gov.cn",
+        "prefix": "/xsgg",                 # 司法公开 > 悬赏公告
+        "province": "广东省", "city": "深圳市",
+    },
+    {
+        "court": "深圳市南山区人民法院",
+        "base": "https://gw.nscourt.gov.cn",
+        "prefix": "/nscourt/wzsy/swgk/zxxsgg",   # 审务公开 > 执行悬赏公告
+        "province": "广东省", "city": "深圳市",
+    },
+    {
+        "court": "深圳市福田区人民法院",
+        "base": "https://www.ftcourt.gov.cn",
+        "prefix": "/xwzx/fygg/xsgg",       # 法院公告 > 悬赏公告
+        "province": "广东省", "city": "深圳市",
+    },
+]
+
+# 单个栏目最多抓多少页（0 = 不限，按站点分页上限）
+COURT_MAX_PAGES = 40

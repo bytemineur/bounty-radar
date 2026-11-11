@@ -23,6 +23,7 @@
     validOnly: false,
     keyword: "",
     provinces: new Set(),
+    sources: new Set(),
     sort: "pub_desc",
     page: 1,
     pageSize: 20
@@ -89,6 +90,10 @@
       if (state.provinces.size) {
         var p = r.prov || "未识别";
         if (!state.provinces.has(p)) return false;
+      }
+      if (state.sources.size) {
+        var s = r.src || "unknown";
+        if (!state.sources.has(s)) return false;
       }
       if (kw) {
         var hay = ((r.court || "") + " " + (r.debtor || "") + " " + (r.caseNo || "") + " " + (r.snip || "")).toLowerCase();
@@ -493,6 +498,25 @@
     }).join("");
   }
 
+  function renderSrcChips() {
+    var list = META.sources || [];
+    if (!list.length) {
+      // 元数据缺失时从数据里现算，保证筛选器始终可用
+      var counts = {};
+      ROWS.forEach(function (r) {
+        var k = r.src || "unknown";
+        counts[k] = (counts[k] || 0) + 1;
+      });
+      list = Object.keys(counts).map(function (k) {
+        return { key: k, label: k, n: counts[k] };
+      }).sort(function (a, b) { return b.n - a.n; });
+    }
+    $("srcChips").innerHTML = list.map(function (s) {
+      return '<button class="chip" data-src="' + esc(s.key) + '">' + esc(s.label) +
+             '<span style="opacity:.55;margin-left:4px">' + s.n + "</span></button>";
+    }).join("");
+  }
+
   /* ---------------- 渲染总入口 ---------------- */
   function renderAll() {
     renderStats();
@@ -552,6 +576,7 @@
       state.estMin = state.estMax = null;
       state.validOnly = false;
       state.provinces.clear();
+      state.sources.clear();
       state.sort = "pub_desc";
       state.page = 1;
       ["fDateFrom", "fDateTo", "fSubMin", "fSubMax", "fRatioMin", "fRatioMax",
@@ -617,6 +642,11 @@
         if (state.provinces.has(pv)) { state.provinces.delete(pv); b.classList.remove("on"); }
         else { state.provinces.add(pv); b.classList.add("on"); }
         applyFilters();
+      } else if (b.dataset.src) {
+        var sv = b.dataset.src;
+        if (state.sources.has(sv)) { state.sources.delete(sv); b.classList.remove("on"); }
+        else { state.sources.add(sv); b.classList.add("on"); }
+        applyFilters();
       }
     });
 
@@ -662,6 +692,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     renderProvChips();
+    renderSrcChips();
     bind();
     applyFilters();
 

@@ -10,8 +10,9 @@ services:
     environment:
       - TZ=Asia/Shanghai
     volumes:
-      # 只挂导出数据，采集后刷新页面即可看到新数据
-      - ./web/data:/app/web/data:ro
+      # 整个 web/ 只读挂载：改前端(html/js/css)不用重建镜像，刷新页面即可
+      # 数据目录 web/data 也在其中，采集后刷新页面就能看到新数据
+      - ./web:/app/web:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8848/index.html', timeout=3)"]

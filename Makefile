@@ -5,7 +5,7 @@ DC      ?= docker compose
 IMAGE   ?= bounty-radar:latest
 PORT    ?= 8848
 
-.PHONY: help build up down restart logs shell stats crawl update reparse export test test-ui clean
+.PHONY: help build up down restart logs shell stats crawl crawl-court crawl-notice update reparse dedupe export test test-ui clean
 
 help:  ## 显示可用命令
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -31,14 +31,23 @@ shell:  ## 进容器拿一个 shell
 stats:  ## 查看库内统计
 	$(DC) run --rm --no-deps --entrypoint python dashboard cli.py stats
 
-crawl:  ## 全量采集（法院站点有频次限制，别连续跑）
+crawl:  ## 全量采集（公告网 + 各法院官网，法院站点有频次限制，别连续跑）
 	$(DC) run --rm crawl
+
+crawl-court:  ## 只抓各地法院官网栏目
+	$(DC) run --rm --entrypoint python crawl cli.py crawl --source court
+
+crawl-notice:  ## 只抓人民法院公告网
+	$(DC) run --rm --entrypoint python crawl cli.py crawl --source rmfygg
 
 update:  ## 采集 + 重新解析 + 导出，一条命令增量更新
 	$(DC) run --rm crawl update
 
 reparse:  ## 用最新规则重解析已有数据并重新导出
 	$(DC) run --rm crawl reparse
+
+dedupe:  ## 清理正文重复的记录
+	$(DC) run --rm --entrypoint python crawl cli.py dedupe
 
 export:  ## 只重新导出看板数据
 	$(DC) run --rm crawl export

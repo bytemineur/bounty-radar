@@ -95,6 +95,43 @@ class TestParse(unittest.TestCase):
         self.assertFalse(parser.looks_like_bounty("本院定于2026年1月1日开庭审理"))
         self.assertFalse(parser.looks_like_bounty("悬赏广告位招租"))
 
+    def test_debtor(self):
+        """法院官网源没有结构化被执行人字段，只能从正文抽。"""
+        cases = [
+            ("被执行人：董德波，男，1983年2月18日出生", "董德波"),
+            ("被执行人周赵，男，汉族，1990年7月28日出生", "周赵"),
+            ("被执行人：贵州金岛湖酒店管理有限公司，住所地贵州省…", "贵州金岛湖酒店管理有限公司"),
+            ("被执行人董德波借款合同纠纷一案", "董德波"),
+            # 顿号并列名单只取第一个，不能把"吴流明"截成"吴流"
+            ("被执行人吴流明、易连秀民间借贷纠纷一案", "吴流明"),
+            # 名字后紧跟证件说明
+            ("被执行人：刘庆明身份证号：4425261965****4015", "刘庆明"),
+        ]
+        for text, want in cases:
+            self.assertEqual(parser.extract_debtor(text), want, text)
+
+    def test_debtor_not_polution(self):
+        """泛指表述不能被当成被执行人名字。"""
+        for text in [
+            "现申请执行人向本院申请公告查找被执行人财产线索",
+            "被执行人下落不明，现公告查找",
+            "被执行人至今未履行生效法律文书确定的付款义务",
+            "被执行人已经履行全部义务，本悬赏公告自动失效",
+        ]:
+            self.assertIsNone(parser.extract_debtor(text), text)
+
+    def test_fixed_bounty_not_from_rate_table(self):
+        """分段费率档位里的金额不是固定赏金，'以X元为限'是封顶不是赏金。"""
+        t = ("将根据申请执行人的书面承诺，按照实际执行到位款项的一定比例发放悬赏金："
+             "1.执行到位款项5000万元(含本数)以内的，按5%发放悬赏金")
+        r = self._p(t)
+        self.assertIsNone(r["reward_fixed"])
+        self.assertAlmostEqual(r["reward_ratio"], 0.05)
+
+        t2 = "给予举报人实际执行到位金额1%的资金（含税，以215737.51元为限）"
+        r2 = self._p(t2)
+        self.assertIsNone(r2["reward_fixed"])
+
 
 class TestRegions(unittest.TestCase):
     def test_resolve(self):

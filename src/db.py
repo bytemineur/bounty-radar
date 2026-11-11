@@ -116,6 +116,43 @@ def existing_ids(conn, source):
         "SELECT source_id FROM notices WHERE source=?", (source,))}
 
 
+def find_same_content(conn, content_hash, source_id=None):
+    """按正文哈希找已存在的记录（跨源去重）。"""
+    if not content_hash:
+        return None
+    row = conn.execute(
+        "SELECT id, source, source_id FROM notices WHERE content_hash=? "
+        "ORDER BY id LIMIT 1", (content_hash,)).fetchone()
+    if not row:
+        return None
+    if source_id is not None and str(row["source_id"]) == str(source_id):
+        return None          # 就是自己
+    return row
+
+
+def dedupe(conn, verbose=True):
+    """清理正文完全相同的重复记录，保留 id 最小的一条。返回删除条数。"""
+    rows = conn.execute(
+        "SELECT id, content_hash FROM notices ORDER BY id").fetchall()
+    keep = {}
+    drop = []
+    for r in rows:
+        h = r["content_hash"]
+        if not h:
+            continue
+        if h in keep:
+            drop.append(r["id"])
+        else:
+            keep[h] = r["id"]
+    if drop:
+        conn.executemany("DELETE FROM notices WHERE id=?", [(i,) for i in drop])
+        conn.commit()
+    if verbose:
+        print(f"去重完成：删除 {len(drop)} 条重复，剩余 "
+              f"{conn.execute('SELECT COUNT(*) FROM notices').fetchone()[0]} 条")
+    return len(drop)
+
+
 def stats(conn):
     row = conn.execute("""
         SELECT COUNT(*) n,
