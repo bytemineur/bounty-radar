@@ -1,0 +1,96 @@
+# -*- coding: utf-8 -*-
+"""数据源：人民法院公告网 (rmfygg.court.gov.cn)
+
+逆向自站内 DataTables 接口 initNoticeList（Liferay serveResource）。
+返回 JSON：iTotalRecords / data[]，每条含 noticeContent 全文。
+"""
+import json
+
+import config
+from http_client import Http
+
+BASE = "https://rmfygg.court.gov.cn"
+LIST_URL = (BASE + "/web/rmfyportal/noticeinfo"
+            "?p_p_id=noticelist_WAR_rmfynoticeListportlet&p_p_lifecycle=2"
+            "&p_p_state=normal&p_p_mode=view&p_p_resource_id=initNoticeList"
+            "&p_p_cacheability=cacheLevelPage&p_p_col_id=column-1&p_p_col_count=1")
+DETAIL_URL = BASE + "/web/rmfyportal/noticedetail"
+
+P = "_noticelist_WAR_rmfynoticeListportlet_"
+SOURCE = "rmfygg"
+
+
+def _ao_data(start, length):
+    return [
+        {"name": "sEcho", "value": 1},
+        {"name": "iColumns", "value": 6},
+        {"name": "sColumns", "value": ",,,,,"},
+        {"name": "iDisplayStart", "value": start},
+        {"name": "iDisplayLength", "value": length},
+        {"name": "mDataProp_0", "value": 0},
+    ]
+
+
+def fetch_page(http, keyword, start=0, length=None, notice_type=""):
+    length = length or config.PAGE_SIZE
+    data = {
+        P + "content": keyword,
+        P + "searchContent": "",
+        P + "courtParam": "",
+        P + "IEVersion": "",
+        P + "flag": "init",
+        P + "noticeType": notice_type,
+        P + "noticeTypeVal": "",
+        P + "noticeSource": "",
+        P + "sourceTypeVal": "全部",
+        P + "isWebCountNotice": "",
+        P + "aoData": json.dumps(_ao_data(start, length), ensure_ascii=False),
+    }
+    raw = http.request(LIST_URL, data=data, headers={
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": f"{BASE}/web/rmfyportal/noticeinfo",
+        "Origin": BASE,
+    })
+    return json.loads(raw)
+
+
+def iter_keyword(http, keyword, max_pages=200, notice_type=None):
+    """逐页产出公告 dict（原始字段）。"""
+    notice_type = config.NOTICE_TYPE_CODE if notice_type is None else notice_type
+    total = None
+    start = 0
+    pages = 0
+    while pages < max_pages:
+        try:
+            j = fetch_page(http, keyword, start=start, notice_type=notice_type)
+        except Exception as e:
+            print(f"    ! 关键词[{keyword}] offset={start} 失败: {e}")
+            break
+        total = j.get("iTotalRecords", 0)
+        rows = j.get("data") or []
+        if not rows:
+            break
+        for r in rows:
+            yield r
+        pages += 1
+        start += config.PAGE_SIZE
+        if total and start >= total:
+            break
+    if total is not None:
+        print(f"    关键词[{keyword}] 共 {total} 条，抓取 {pages} 页")
+
+
+def to_record(raw):
+    """把源站原始行转成统一的原始记录（不含解析结果）。"""
+    code = raw.get("noticeCode") or raw.get("uuid")
+    return {
+        "source": SOURCE,
+        "source_id": str(code),
+        "url": f"{DETAIL_URL}?paramStr={raw.get('uuid','')}",
+        "court": (raw.get("court") or "").strip(),
+        "debtor": (raw.get("tosendPeople") or "").strip(),
+        "publish_date": (raw.get("publishDate") or "").strip(),
+        "notice_type": (raw.get("noticeType") or "").strip(),
+        "content": (raw.get("noticeContent") or "").strip(),
+        "raw_json": raw,
+    }

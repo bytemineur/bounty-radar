@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>执行悬赏公告看板 · 全国法院</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">悬</div>
+    <div>
+      <h1>执行悬赏公告看板</h1>
+      <p class="sub">全国法院悬赏执行线索库 · 标的 / 比例 / 赏金多维筛选</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="updated" id="updatedAt">—</span>
+    <button class="btn ghost" id="btnExport">导出筛选结果 CSV</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- 统计卡 -->
+  <section class="stats" id="stats"></section>
+
+  <!-- 筛选 -->
+  <section class="panel filters">
+    <div class="panel-head">
+      <h2>筛选条件</h2>
+      <div class="head-actions">
+        <button class="btn tiny ghost" id="btnToggleFilter">收起</button>
+        <button class="btn tiny ghost" id="btnReset">重置</button>
+      </div>
+    </div>
+
+    <div id="filterBody">
+      <div class="fgrid">
+
+        <div class="fitem">
+          <label>发布日期</label>
+          <div class="range">
+            <input type="date" id="fDateFrom"><span>至</span><input type="date" id="fDateTo">
+          </div>
+          <div class="hints">
+            <button class="chip" data-date="30">近30天</button>
+            <button class="chip" data-date="90">近90天</button>
+            <button class="chip" data-date="365">近一年</button>
+          </div>
+        </div>
+
+        <div class="fitem">
+          <label>执行标的（万元）</label>
+          <div class="range">
+            <input type="number" id="fSubMin" placeholder="不限" min="0" step="1">
+            <span>至</span>
+            <input type="number" id="fSubMax" placeholder="不限" min="0" step="1">
+          </div>
+          <div class="hints">
+            <button class="chip" data-sub="0,50">50万以下</button>
+            <button class="chip" data-sub="50,500">50–500万</button>
+            <button class="chip" data-sub="500,999999">500万以上</button>
+          </div>
+        </div>
+
+        <div class="fitem">
+          <label>奖励比例（%）</label>
+          <div class="range">
+            <input type="number" id="fRatioMin" placeholder="不限" min="0" max="100" step="0.5">
+            <span>至</span>
+            <input type="number" id="fRatioMax" placeholder="不限" min="0" max="100" step="0.5">
+          </div>
+          <div class="hints">
+            <button class="chip" data-ratio="10,">≥10%</button>
+            <button class="chip" data-ratio="20,">≥20%</button>
+            <button class="chip" data-ratio=",5">≤5%</button>
+          </div>
+        </div>
+
+        <div class="fitem">
+          <label>最高奖励 · 预估（元）</label>
+          <div class="range">
+            <input type="number" id="fEstMin" placeholder="不限" min="0" step="1000">
+            <span>至</span>
+            <input type="number" id="fEstMax" placeholder="不限" min="0" step="1000">
+          </div>
+          <div class="hints">
+            <button class="chip" data-est="10000,">≥1万</button>
+            <button class="chip" data-est="100000,">≥10万</button>
+            <button class="chip" data-est="1000000,">≥100万</button>
+          </div>
+        </div>
+
+        <div class="fitem">
+          <label>悬赏类型</label>
+          <select id="fType">
+            <option value="">全部类型</option>
+            <option value="property">财产线索</option>
+            <option value="whereabouts">下落 / 行踪</option>
+            <option value="both">财产 + 下落</option>
+            <option value="unknown">未标注</option>
+          </select>
+          <div class="hints">
+            <button class="chip" data-valid="1">仅看悬赏期内</button>
+          </div>
+        </div>
+
+        <div class="fitem wide">
+          <label>关键词</label>
+          <input type="search" id="fKeyword" placeholder="搜索法院 / 被执行人 / 案号 / 公告正文…">
+        </div>
+      </div>
+
+      <div class="fitem provbox">
+        <label>地区（可多选）</label>
+        <div class="chips" id="provChips"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 图表 -->
+  <section class="charts">
+    <div class="panel chart-card">
+      <div class="panel-head"><h2>公告发布趋势</h2><span class="hint" id="trendHint"></span></div>
+      <div id="chartTrend" class="chart"></div>
+    </div>
+    <div class="panel chart-card">
+      <div class="panel-head"><h2>奖励比例分布</h2></div>
+      <div id="chartRatio" class="chart"></div>
+    </div>
+    <div class="panel chart-card">
+      <div class="panel-head"><h2>地区分布 TOP 8</h2></div>
+      <div id="chartProv" class="chart"></div>
+    </div>
+  </section>
+
+  <!-- 表格 -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>公告明细 <span class="count" id="resultCount"></span></h2>
+      <div class="head-actions">
+        <label class="mini">排序</label>
+        <select id="fSort" class="mini-select">
+          <option value="pub_desc">发布日期 ↓</option>
+          <option value="pub_asc">发布日期 ↑</option>
+          <option value="est_desc">预估奖励 ↓</option>
+          <option value="est_asc">预估奖励 ↑</option>
+          <option value="subject_desc">执行标的 ↓</option>
+          <option value="subject_asc">执行标的 ↑</option>
+          <option value="ratio_desc">奖励比例 ↓</option>
+          <option value="ratio_asc">奖励比例 ↑</option>
+          <option value="cap_desc">封顶金额 ↓</option>
+          <option value="cap_asc">封顶金额 ↑</option>
+        </select>
+        <label class="mini">每页</label>
+        <select id="fPageSize" class="mini-select">
+          <option>20</option><option>50</option><option>100</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th class="c-court">法院</th>
+            <th class="c-debtor">被执行人</th>
+            <th class="c-case">执行案号</th>
+            <th class="c-num sortable" data-sort="subject">执行标的</th>
+            <th class="c-num sortable" data-sort="ratio">奖励比例</th>
+            <th class="c-num sortable" data-sort="cap">封顶</th>
+            <th class="c-num sortable" data-sort="est">预估最高奖励</th>
+            <th class="c-type">类型</th>
+            <th class="c-date sortable" data-sort="pub">发布日期</th>
+            <th class="c-act"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty" id="empty" hidden>没有符合条件的公告，试试放宽筛选条件。</div>
+    </div>
+
+    <div class="pager">
+      <span id="pageInfo"></span>
+      <div class="pager-btns" id="pagerBtns"></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>数据来源：人民法院公告网（rmfygg.court.gov.cn）公开的执行悬赏公告。金额与比例为程序从公告正文抽取，可能存在误差，具体以法院公告原文为准。</p>
+  </footer>
+</main>
+
+<!-- 详情弹窗 -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-body">
+    <div class="modal-head">
+      <h3 id="mTitle"></h3>
+      <button class="x" data-close>×</button>
+    </div>
+    <div class="modal-content" id="mContent"></div>
+    <div class="modal-foot">
+      <a id="mLink" class="btn primary" target="_blank" rel="noopener">查看公告原文</a>
+      <button class="btn ghost" data-close>关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="data/bounties.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

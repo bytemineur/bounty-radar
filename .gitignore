@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地运行产物
+*.log
+.DS_Store
+Thumbs.db
+
+# SQLite 临时文件（bounty.db 本身要入库，供开箱即用）
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+
+# 测试临时页面（run_ui_test.py 会自动清理）
+web/_ui_test.html
+web/_selftest.html
+web/_shot.html

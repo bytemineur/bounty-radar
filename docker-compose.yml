@@ -1,0 +1,36 @@
+services:
+  # 看板：起一个静态服务，把 web/ 目录在 8848 端口暴露出去
+  dashboard:
+    build: .
+    image: bounty-radar:latest
+    container_name: bounty-radar
+    command: ["serve", "--host", "0.0.0.0", "--no-browser"]
+    ports:
+      - "${PORT:-8848}:8848"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      # 只挂导出数据，采集后刷新页面即可看到新数据
+      - ./web/data:/app/web/data:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8848/index.html', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # 采集：一次性任务，docker compose run --rm crawl
+  # 需要写数据库和导出文件，所以 data/ 与 web/data/ 都挂可写
+  crawl:
+    build: .
+    image: bounty-radar:latest
+    profiles: ["crawl"]
+    command: ["crawl"]
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/app/data
+      - ./web/data:/app/web/data
+    # 容器内是非 root(uid 1000)，Linux 下宿主机目录属主不同时用：
+    #   docker compose run --rm --user "$(id -u):$(id -g)" crawl
+    user: "${UID:-1000}:${GID:-1000}"

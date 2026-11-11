@@ -1,0 +1,15 @@
+# 统一换行符，避免 Windows 提交后 diff 全红
+* text=auto eol=lf
+
+# Windows 批处理保留 CRLF（如有）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制
+*.png binary
+*.jpg binary
+*.db binary
+
+# 采集产物：GitHub 语言统计里不计入
+web/data/bounties.js   linguist-generated=true
+web/data/bounties.json linguist-generated=true
