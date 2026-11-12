@@ -261,6 +261,30 @@ def cmd_sz_fixcourt(_):
     sz.reattribute()
 
 
+# ---------------- 珠三角专项 ----------------
+def cmd_prd_crawl(args):
+    """东莞 / 惠州 / 广州基层法院：全部走公告网按法院检索。"""
+    import prd
+    src = args.source or "all"
+    if src in ("all", "hearing"):
+        prd.crawl_hearing(max_pages=args.pages)
+    if src in ("all", "bounty"):
+        prd.crawl_bounty(max_pages=args.pages)
+
+
+def cmd_prd_update(args):
+    import prd
+    import exporter
+    prd.crawl_hearing(max_pages=args.pages)
+    prd.crawl_bounty(max_pages=args.pages)
+    exporter.export()
+
+
+def cmd_prd_stats(_):
+    import prd
+    prd.stats()
+
+
 def main():
     ap = argparse.ArgumentParser(description="执行悬赏公告数据库")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -345,6 +369,24 @@ def main():
     ssub.add_parser("stats", help="深圳数据覆盖情况").set_defaults(func=cmd_sz_stats)
     ssub.add_parser("fixcourt", help="按正文校准深圳记录的发布法院").set_defaults(
         func=cmd_sz_fixcourt)
+
+    # ---- 珠三角专项：东莞 / 惠州 / 广州基层法院 ----
+    pp = sub.add_parser("prd", help="珠三角专项：东莞、惠州、广州各基层法院")
+    psub = pp.add_subparsers(dest="prdcmd", required=True)
+
+    def _prdcommon(p):
+        p.add_argument("--pages", type=int, help="每个法院每种类型最多翻页数")
+        p.add_argument("--source", help="all(默认) / hearing / bounty")
+
+    p = psub.add_parser("crawl", help="采公告网（按法院检索，慢速）")
+    _prdcommon(p)
+    p.set_defaults(func=cmd_prd_crawl)
+
+    p = psub.add_parser("update", help="采集 + 导出")
+    _prdcommon(p)
+    p.set_defaults(func=cmd_prd_update)
+
+    psub.add_parser("stats", help="珠三角数据覆盖情况").set_defaults(func=cmd_prd_stats)
 
     args = ap.parse_args()
     args.func(args)

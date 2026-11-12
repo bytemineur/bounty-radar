@@ -41,9 +41,41 @@ COURT_RE_FULL = re.compile(
 COURT_RE = re.compile(r"([\u4e00-\u9fa5]{2,12}?人民法院)")
 
 
+def _build_registry():
+    """已知法院：写法 -> 标准全称。目前收录珠三角各基层法院。
+
+    config.PRD_COURTS 的每一条是 (城市, 标准全称, 别名列表)。别名用于
+    收录「广东自由贸易区南沙片区人民法院」这类同院不同牌子的写法。
+    """
+    reg = {}
+    for row in getattr(config, "PRD_COURTS", []):
+        name, aliases = row[1], (row[2] if len(row) > 2 else [])
+        reg[name] = name
+        for a in aliases:
+            if a:
+                reg[a] = name
+    return reg
+
+
+KNOWN_COURTS = _build_registry()
+
+
+def _match_known(text):
+    """在文本里找已知法院全称/别名，返回标准全称。"""
+    if not text:
+        return None
+    for key, canon in KNOWN_COURTS.items():
+        if key in text:
+            return canon
+    return None
+
+
 def detect_court(title, content, default):
     """标题优先、正文兜底，识别公告的真实发布法院（结果做规范化）。"""
     for text in (title or "", (content or "")[:600]):
+        hit = _match_known(text)
+        if hit:
+            return hit
         m = COURT_RE_FULL.search(text)
         if m:
             return canon_court(m.group(1))
@@ -64,8 +96,19 @@ def canon_court(name):
     s = (name or "").strip()
     if not s:
         return s
+    hit = _match_known(s)
+    if hit:
+        return hit
     if "中级人民法院" in s:
-        return "广东省深圳市中级人民法院"
+        # 只补全省级前缀，不改城市：正文里的「上诉至广州市中级人民法院」
+        # 不能被顺手改写成深圳中院
+        for city, full in (("深圳", "广东省深圳市中级人民法院"),
+                           ("广州", "广东省广州市中级人民法院"),
+                           ("东莞", "东莞市中级人民法院"),
+                           ("惠州", "惠州市中级人民法院")):
+            if city in s:
+                return full
+        return s
     if "前海" in s:
         return "深圳前海合作区人民法院"
     for d in SZ_DISTRICTS:
@@ -78,8 +121,11 @@ def canon_court(name):
 
 def _clean_court(name):
     name = canon_court(name)
+    # 只有认不出的「裸区名」（如「龙岗区人民法院」）才补深圳市前缀；
+    # 东莞/惠州/广州的法院名本身就带城市，不能被改写成深圳市开头。
     if name and not name.startswith(("深圳市", "广东省", "深圳")):
-        name = "深圳市" + name
+        if any(d in name for d in SZ_DISTRICTS):
+            return "深圳市" + name
     return name
 
 
@@ -197,7 +243,8 @@ def _rmfygg_http():
 
 
 def crawl_rmfygg_bounty(conn=None, http=None, courts=None, max_pages=None,
-                        verbose=True):
+                        verbose=True, tag="深圳", city_of=None, province=None,
+                        keywords=None):
     """悬赏公告：公告网按法院检索。"""
     import pipeline
 
@@ -207,12 +254,13 @@ def crawl_rmfygg_bounty(conn=None, http=None, courts=None, max_pages=None,
     conn = conn or db.connect()
     db.init_db(conn)
     max_pages = config.SZ_RMFYGG_MAX_PAGES if max_pages is None else max_pages
+    kws = keywords or BOUNTY_KWS
 
     new = kept = seen = 0
     for court in courts:
-        for kw in BOUNTY_KWS:
+        for kw in kws:
             if verbose:
-                print(f"\n[深圳·悬赏·公告网] {court} · {kw}")
+                print(f"\n[{tag}·悬赏·公告网] {court} · {kw}")
             try:
                 for raw in rmfygg.iter_keyword(http, kw, max_pages=max_pages,
                                                court_name=court, verbose=False):
@@ -223,6 +271,9 @@ def crawl_rmfygg_bounty(conn=None, http=None, courts=None, max_pages=None,
                     rec_raw["court"] = _clean_court(
                         detect_court(rec_raw.get("court"), rec_raw["content"],
                                      court))
+                    if city_of:
+                        rec_raw["province"] = province or config.SZ_PROVINCE
+                        rec_raw["city"] = city_of.get(court) or ""
                     rec = pipeline.build_record(rec_raw)
                     if db.find_same_content(conn, rec["content_hash"],
                                             rec["source_id"]):
@@ -240,12 +291,12 @@ def crawl_rmfygg_bounty(conn=None, http=None, courts=None, max_pages=None,
     if own:
         conn.close()
     if verbose:
-        print(f"\n[深圳·悬赏·公告网] 扫描 {seen}，入池 {kept}，新增 {new}")
+        print(f"\n[{tag}·悬赏·公告网] 扫描 {seen}，入池 {kept}，新增 {new}")
     return new
 
 
 def crawl_rmfygg_hearing(conn=None, http=None, courts=None, max_pages=None,
-                         verbose=True):
+                         verbose=True, tag="深圳", city_of=None, province=None):
     """开庭公告：公告网按法院检索（开庭传票 + 起诉状副本及开庭传票）。"""
     import pipeline
 
@@ -261,7 +312,7 @@ def crawl_rmfygg_hearing(conn=None, http=None, courts=None, max_pages=None,
     for court in courts:
         for ntv in types:
             if verbose:
-                print(f"\n[深圳·开庭·公告网] {court} · {ntv}")
+                print(f"\n[{tag}·开庭·公告网] {court} · {ntv}")
             try:
                 for raw in rmfygg.iter_keyword(http, "", max_pages=max_pages,
                                                notice_type_val=ntv,
@@ -276,6 +327,9 @@ def crawl_rmfygg_hearing(conn=None, http=None, courts=None, max_pages=None,
                         continue
                     rec_raw["court"] = _clean_court(
                         detect_court(rec_raw.get("court"), text, court))
+                    if city_of:
+                        rec_raw["province"] = province or config.SZ_PROVINCE
+                        rec_raw["city"] = city_of.get(court) or ""
                     rec = pipeline.build_hearing_record(rec_raw)
                     if not rec.get("hearing_date"):
                         skipped += 1
@@ -299,7 +353,7 @@ def crawl_rmfygg_hearing(conn=None, http=None, courts=None, max_pages=None,
     if own:
         conn.close()
     if verbose:
-        print(f"\n[深圳·开庭·公告网] 扫描 {seen}，入池 {kept}，"
+        print(f"\n[{tag}·开庭·公告网] 扫描 {seen}，入池 {kept}，"
               f"新增 {new}，跳过 {skipped}")
     return new
 

@@ -74,7 +74,7 @@ def fetch_page(http, keyword, start=0, length=None, notice_type="",
 
 
 def iter_keyword(http, keyword, max_pages=200, notice_type=None,
-                 notice_type_val="", court_name=""):
+                 notice_type_val="", court_name="", verbose=True):
     """逐页产出公告 dict（原始字段）。
 
     court_name 走服务端 courtParam，支持「罗湖区」这类简称模糊匹配，
@@ -102,7 +102,7 @@ def iter_keyword(http, keyword, max_pages=200, notice_type=None,
         start += config.PAGE_SIZE
         if total and start >= total:
             break
-    if total is not None:
+    if total is not None and verbose:
         print(f"    关键词[{keyword}] 共 {total} 条，抓取 {pages} 页")
 
 
