@@ -74,8 +74,12 @@ def fetch_page(http, keyword, start=0, length=None, notice_type="",
 
 
 def iter_keyword(http, keyword, max_pages=200, notice_type=None,
-                 notice_type_val=""):
-    """逐页产出公告 dict（原始字段）。"""
+                 notice_type_val="", court_name=""):
+    """逐页产出公告 dict（原始字段）。
+
+    court_name 走服务端 courtParam，支持「罗湖区」这类简称模糊匹配，
+    用于把一个法院的公告一次性拉全（深圳专项按法院采集走这条路）。
+    """
     notice_type = config.NOTICE_TYPE_CODE if notice_type is None else notice_type
     total = None
     start = 0
@@ -83,7 +87,8 @@ def iter_keyword(http, keyword, max_pages=200, notice_type=None,
     while pages < max_pages:
         try:
             j = fetch_page(http, keyword, start=start, notice_type=notice_type,
-                           notice_type_val=notice_type_val)
+                           notice_type_val=notice_type_val,
+                           court_name=court_name)
         except Exception as e:
             print(f"    ! 关键词[{keyword}] offset={start} 失败: {e}")
             break

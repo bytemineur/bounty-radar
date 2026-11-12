@@ -152,3 +152,94 @@ SCHEDULE_SITES = [
     },
 ]
 
+
+# ============================================================
+# 深圳专项：市中院 + 10 个区法院
+# ------------------------------------------------------------
+# 大鹏新区没有独立基层法院，辖区案件由「龙岗区人民法院大鹏法庭
+# （环境资源法庭）」管辖，因此不单列法院，龙岗两条源已覆盖大鹏新区。
+# 区名 -> 法院名映射见 SZ_DISTRICT_COURT，导出时用于补区县字段。
+# ============================================================
+SZ_PROVINCE = "广东省"
+SZ_CITY = "深圳市"
+
+SZ_DISTRICT_COURT = [
+    ("福田区", "深圳市福田区人民法院"),
+    ("罗湖区", "深圳市罗湖区人民法院"),
+    ("南山区", "深圳市南山区人民法院"),
+    ("盐田区", "深圳市盐田区人民法院"),
+    ("宝安区", "深圳市宝安区人民法院"),
+    ("龙华区", "深圳市龙华区人民法院"),
+    ("龙岗区", "深圳市龙岗区人民法院"),
+    ("坪山区", "深圳市坪山区人民法院"),
+    ("光明区", "深圳市光明区人民法院"),
+    ("大鹏新区", "深圳市龙岗区人民法院"),      # 大鹏法庭属龙岗法院
+    ("市中级", "广东省深圳市中级人民法院"),
+]
+
+# ---- 悬赏公告栏目（法院官网）----
+# detect_court=True：栏目标题/正文里出现其他法院名时以正文为准
+# （中院站点的悬赏栏目实际汇总了全市各区法院的悬赏公告）
+SZ_BOUNTY_SITES = [
+    {"court": "广东省深圳市中级人民法院", "base": "https://www.szcourt.gov.cn",
+     "prefix": "/xsgg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市福田区人民法院", "base": "https://www.ftcourt.gov.cn",
+     "prefix": "/xwzx/fygg/xsgg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市罗湖区人民法院", "base": "https://www.szlhfy.gov.cn",
+     "prefix": "/sfgk/xsgg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市南山区人民法院", "base": "https://gw.nscourt.gov.cn",
+     "prefix": "/nscourt/wzsy/swgk/zxxsgg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市盐田区人民法院", "base": "https://www.shenpan.gov.cn",
+     "prefix": "/sfgk/zxgg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市龙华区人民法院", "base": "https://www.szlhcourt.gov.cn",
+     "prefix": "/gonggao/zhixing", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+]
+
+# ---- 开庭公告 / 送达公告栏目（法院官网）----
+SZ_HEARING_SITES = [
+    {"court": "广东省深圳市中级人民法院", "base": "https://www.szcourt.gov.cn",
+     "prefix": "/jxjsktgg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市福田区人民法院", "base": "https://www.ftcourt.gov.cn",
+     "prefix": "/xwzx/fygg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市罗湖区人民法院", "base": "https://www.szlhfy.gov.cn",
+     "prefix": "/sfgk/sdgg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市盐田区人民法院", "base": "https://www.shenpan.gov.cn",
+     "prefix": "/sfgk/sdgg", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+    {"court": "深圳市龙岗区人民法院", "base": "https://fy.lg.gov.cn",
+     "prefix": "/fytz", "detect_court": True,
+     "province": "广东省", "city": "深圳市"},
+]
+
+# ---- 人民法院公告网：按法院检索（courtParam 支持简称模糊匹配）----
+# 这条源是各区法院开庭公告的主力：区法院很少在自建站发送达公告，
+# 基本都投到公告网。缺点是公告网有腾讯云 WAF，连续请求会 403 封 IP。
+SZ_RMFYGG_COURTS = [c for _, c in SZ_DISTRICT_COURT]
+
+# 每个法院最多翻多少页（15 条/页）
+SZ_RMFYGG_MAX_PAGES = 40
+# 公告网节流：深圳专项单独放慢，避免触发 WAF
+SZ_RMFYGG_INTERVAL = 8.0
+# 被 403 后冷却多久再试（秒）；仍失败则本轮放弃，下次续跑
+SZ_RMFYGG_COOLDOWN = 300
+
+# ---- 开庭排期表（法院官网静态表格）----
+# 盐田法院是深圳唯一把全周排期做成表格挂出来的区院：
+# 开庭日期|开庭时间|法庭|案号|案由|当事人|承办法官，比送达公告信息更全。
+SZ_SCHEDULE_SITES = [
+    {
+        "court": "深圳市盐田区人民法院",
+        "base": "https://www.shenpan.gov.cn",
+        "prefix": "/sfgk/ktpq",
+        "province": "广东省", "city": "深圳市",
+    },
+]

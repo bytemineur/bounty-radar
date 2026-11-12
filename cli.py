@@ -217,6 +217,50 @@ def cmd_h_serve(args):
     cmd_serve(args)
 
 
+# ---------------- 深圳专项 ----------------
+def cmd_sz_sites(args):
+    """法院官网栏目：悬赏 + 开庭（含结构化排期表）。"""
+    import sz
+    src = args.source or "all"
+    if src in ("all", "bounty"):
+        sz.crawl_bounty(max_pages=args.pages, limit=args.limit)
+    if src in ("all", "hearing"):
+        sz.crawl_hearing(max_pages=args.pages, limit=args.limit)
+        sz.crawl_schedule(max_pages=args.pages)
+
+
+def cmd_sz_rmfygg(args):
+    """公告网按法院检索（受 WAF 限流，慢速 + 续跑）。"""
+    import sz
+    src = args.source or "all"
+    if src in ("all", "bounty"):
+        sz.crawl_rmfygg_bounty(max_pages=args.pages)
+    if src in ("all", "hearing"):
+        sz.crawl_rmfygg_hearing(max_pages=args.pages)
+
+
+def cmd_sz_update(args):
+    """官网 + 公告网都采一遍，然后导数据。"""
+    import sz
+    sz.crawl_bounty(max_pages=args.pages)
+    sz.crawl_hearing(max_pages=args.pages)
+    if not args.skip_rmfygg:
+        sz.crawl_rmfygg_bounty(max_pages=args.pages)
+        sz.crawl_rmfygg_hearing(max_pages=args.pages)
+    exporter.export()
+
+
+def cmd_sz_stats(_):
+    import sz
+    sz.stats()
+
+
+def cmd_sz_fixcourt(_):
+    """按正文重新校准深圳记录的发布法院（中院栏目混入各区公告）。"""
+    import sz
+    sz.reattribute()
+
+
 def main():
     ap = argparse.ArgumentParser(description="执行悬赏公告数据库")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -274,6 +318,33 @@ def main():
     p.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     p.add_argument("--no-browser", action="store_true")
     p.set_defaults(func=cmd_h_serve)
+
+    # ---- 深圳专项：市中院 + 10 区法院 ----
+    sp = sub.add_parser("sz", help="深圳专项：市中院与各区法院的悬赏/开庭公告")
+    ssub = sp.add_subparsers(dest="szcmd", required=True)
+
+    def _szcommon(p):
+        p.add_argument("--pages", type=int, help="每个栏目/法院最多翻页数")
+        p.add_argument("--limit", type=int, help="最多入库条数")
+        p.add_argument("--source", help="all(默认) / bounty / hearing")
+
+    p = ssub.add_parser("sites", help="采法院官网公告栏目（悬赏 + 开庭）")
+    _szcommon(p)
+    p.set_defaults(func=cmd_sz_sites)
+
+    p = ssub.add_parser("rmfygg", help="采人民法院公告网（按法院检索，慢速）")
+    _szcommon(p)
+    p.set_defaults(func=cmd_sz_rmfygg)
+
+    p = ssub.add_parser("update", help="官网 + 公告网全采一遍再导出")
+    _szcommon(p)
+    p.add_argument("--skip-rmfygg", action="store_true",
+                   help="跳过公告网（WAF 拦截时用）")
+    p.set_defaults(func=cmd_sz_update)
+
+    ssub.add_parser("stats", help="深圳数据覆盖情况").set_defaults(func=cmd_sz_stats)
+    ssub.add_parser("fixcourt", help="按正文校准深圳记录的发布法院").set_defaults(
+        func=cmd_sz_fixcourt)
 
     args = ap.parse_args()
     args.func(args)
